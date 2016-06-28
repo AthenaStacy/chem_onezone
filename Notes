@@ -1,0 +1,54 @@
+A “Primordial Chemistry” routine for Orion2. Based off the package used in Gray and Scannapieco, 2010, Apj, 718, 417. This package tracks the evolution of 16 species (including electrons), in particular molecular hydrogen and hydrogen deuteride. This scheme employs a robust 4th-order Runge Kutta scheme to evolve the species in time and allows for sub-cycling within both the chemistry and cooling update to ensure numerical stability. The species and network rates are taken from Glover and Abel 2008, MNRAS, 388, 1627, as well as Gray and Scannapieco (2010). 
+
+Improvements for the Orion2 version include updated cooling tables from CLOUDY, a linear interpolation function when reading data from these tables, as well as general debugging and refactoring of the original Fortran code. Written in C++. The package is called for each cell. Each cell’s chemistry is independent of every other cell, giving excellent parallel scaling. 
+
+Without ionization ray tracing, this package is called on the hydro time step. With ionization ray tracing particular to Pop III stars, this package is called after every ray trace. If there is no ray tracing, chemistry is called in AMRLevelOrion.cpp via the function ChemPrep(). 
+
+As of now, the chemistry package requires 4 inputs: the amount of time to evolve, the mass density, the energy density, and the mass fractions of each species. 
+
+The tracer fields are used to track the abundances of each chemical species. The ordering of the chemical species is { H+, H, H-, H_2+, H_2, D+, D, D-, HD+, HD, D_2+, D_2, HE+, HE, HE++, elec }. This ordering is set in the PrimChemGlobals.H file, where you can change it if you so dare. Changing the order has not been tested. The mass fractions should be passed into the chemistry routine in the exact same order as what is given in the PrimChemGlobals.H file. The electron fraction is set by imposing charge conservation, and is not required to be stored as a tracer field. The chemistry package returns updated mass fractions and an updated energy density. 
+
+Init.c should load the tracer fields with the mass fractions of each species. Orion2 then multiplies these quantities by the density and advects via the continuity equation. The mass fractions can be recovered by dividing the tracer field values by the density. 
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+DEFINITIONS.H flags: 
+ - DO_CHEMISTRY  (default = NO) :: YES is required for any call to PopIII chemistry
+ - CHEM_NSPECIES (default = 0) :: The number of species. Unless substantial changes are made to the chemistry package beyond this point, this number should be set to 15. Questionable results otherwise. The number of tracer fields NTRACER needs to be at least as big as CHEM_NSPECIES. At the moment, this package assumes the chemical species occupy the first CHEM_NSPECIES tracer field slots. 
+
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+Inside the chemistry package, there are a few knobs that can be set:
+
+PrimChemDriver.cpp — function PrimChemDriver()
+	bool chem_cc_case : =0 Calls the optically thin cooling table (Osterbrock case A), where ionizing photons emitted during recombination are lost to the system. =1 calls the optically thick cooling table (Osterbrock case B), where the photons are locally absorbed, reducing the recombination rates. Default = 1. 
+	REAL fssh2 : between 0 and 1, alters how much photodissociation of H_2 from self-shielding is allowed. Default = 1
+	REAL fsshd : between 0 and 1, alters how much photodissociation of HD from self-shielding is allowed. Default = 1
+	REAL J21 : Background flux in units of 1e-21 erg/s/cm^2/Hz/sRad at the Lyman limit. Allows for photodissociation and ionization of molecules. Default = 0.0
+	eosIn[4] : The metal mass fraction of the gas. Default = 0.0 for pristine primordial gas.
+
+PrimChemBurner.cpp — function PChem_Burner()
+	double smallx : Floor chemical species abundance. Default = 1e-20.
+	bool Do_cool : Do you call the cooling routines? Default = 1 (yes).
+	bool Do_cool_metal : In the cooling routines, do you cool via metals too? Default = 0 (no). This also requires the metal fraction of the gas to be non-zero. 
+
+PrimChemIntegrate.cpp — function PrimChemIntegrate()
+	REAL odescal : When computing the errors in the Runge-Kutta routine, this value sets the lower limit for which abundances are considered. Default = 1e-6.
+	
+PrimChemIntegrate.H — function StepMe()
+	REAL eps : Runge-Kutta error tolerance. Default = 1e-4
+
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+Brief description of each file and its contents:
+
+PrimChemGlobals.H — Defines a namespace used for species and reaction indexing 
+PrimChemDriver.H — Holds some initialization functions 
+PrimChemDriver.cpp — Driver function that sets everything up and then calls the Burner routine
+PrimChemBurner.H — Location of the cooling tables, cooling functions, and functions to compute the reaction and network rates
+PrimChemBurner.cpp — The main loop that re-evaluates abundance derivatives, calls the Runge-Kutta integrator, and calls the cooling routines
+PrimChemIntegrate.H — Includes some small matrix operation functions and StepMe, the function that advances by one Runge-Kutta step. 
+PrimChemIntegrate.cpp — Houses the integration setup routine, which calls StepMe to evolve the abundances forward in time. 
+Jacobian.cpp — Calculates the jacobian matrix for the Runge-Kutta integration 
+
+

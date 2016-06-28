@@ -1,0 +1,16 @@
+#define nrpar     30
+#define g0_par     1
+#define NH_par     2
+#define NH2_par    3
+#define NCO_par    4
+#define tdust_par  5
+#define zeta_par   6
+#define dx_par     7
+#define divv_par   8
+#define rho_par    9
+#define gamma_par  10
+#define temp_par   11
+#define e0_par     12
+#define h2var0_par 13
+#define divv1_par 14
+#define J21_par  18
